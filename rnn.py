@@ -15,11 +15,11 @@ class RNN(nn.Module):
         # Output layer
         self.fc = nn.Linear(hidden_dim, vocab_size)
 
-    def forward(self, x):
+    def forward(self, x, hidden):
         # Embed the input
         embedded = self.embedding(x)
         # Pass through RNN
-        rnn_out, _ = self.rnn(embedded)
+        output, hidden = self.rnn(embedded, hidden)
         # Take the last time step and pass through final layer
-        output = self.fc(rnn_out[:, -1, :])
-        return output
+        output = self.fc(output)
+        return output, hidden
