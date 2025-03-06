@@ -40,8 +40,19 @@ for word in vocab:
     word_to_idx[word] = idx
     idx += 1
     
-print(word_to_idx)
-
+# Convert the training dataset to integer indices
+train_indices = []
+for example in train_dataset:
+    words = example["text"].split(" ")
+    example_indices = []
+    for word in words:
+        if word in word_to_idx:
+            example_indices.append(word_to_idx[word])
+        else:
+            example_indices.append(word_to_idx['<UNK>'])  # Use <UNK> for unknown words
+    train_indices.append(example_indices)
+    
+print(train_indices[:10])
 
 
 
