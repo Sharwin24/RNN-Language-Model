@@ -3,7 +3,9 @@ import torch.nn as nn
 from datasets import load_dataset
 from rnn import RNN
 import torch.optim as optim
+from collections import Counter
 
+VOCAB_SIZE = 15000
 epochs = 20
 
 # Load WikiText-2 dataset using Hugging Face datasets
@@ -14,7 +16,26 @@ train_dataset = dataset['train']
 validation_dataset = dataset['validation']
 test_dataset = dataset['test']
 
-print(train_dataset[1]["text"].split(" "))
+
+#Create a reduced vocabulary by taking the top 15,000 most common words
+word_counter = Counter()
+for example in train_dataset:
+    # Tokenization by whitespace
+    words = example["text"].split(" ")
+    word_counter.update(words)
+    
+most_common_words = word_counter.most_common(VOCAB_SIZE)
+
+#Vocab now contains the most common words
+vocab = set()
+for word, _ in most_common_words:
+    vocab.add(word)
+
+vocab.add('<UNK>')  # For unknown words
+
+
+
+
 
 
 
