@@ -33,7 +33,14 @@ for word, _ in most_common_words:
 
 vocab.add('<UNK>')  # For unknown words
 
-
+#Integer representation
+word_to_idx = {}
+idx = 0
+for word in vocab:
+    word_to_idx[word] = idx
+    idx += 1
+    
+print(word_to_idx)
 
 
 
