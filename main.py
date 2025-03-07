@@ -17,29 +17,29 @@ validation_dataset = dataset['validation']
 test_dataset = dataset['test']
 
 
-#Create a reduced vocabulary by taking the top 15,000 most common words
+# Create a reduced vocabulary by taking the top 15,000 most common words
 word_counter = Counter()
 for example in train_dataset:
     # Tokenization by whitespace
     words = example["text"].split(" ")
     word_counter.update(words)
-    
+
 most_common_words = word_counter.most_common(VOCAB_SIZE)
 
-#Vocab now contains the most common words
+# Vocab now contains the most common words
 vocab = set()
 for word, _ in most_common_words:
     vocab.add(word)
 
 vocab.add('<UNK>')  # For unknown words
 
-#Integer representation
+# Integer representation
 word_to_idx = {}
 idx = 0
 for word in vocab:
     word_to_idx[word] = idx
     idx += 1
-    
+
 # Convert the training dataset to integer indices
 train_indices = []
 for example in train_dataset:
@@ -49,12 +49,8 @@ for example in train_dataset:
         if word in word_to_idx:
             example_indices.append(word_to_idx[word])
         else:
-            example_indices.append(word_to_idx['<UNK>'])  # Use <UNK> for unknown words
+            # Use <UNK> for unknown words
+            example_indices.append(word_to_idx['<UNK>'])
     train_indices.append(example_indices)
-    
+
 print(train_indices[:10])
-
-
-
-
-
