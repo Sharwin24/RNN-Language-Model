@@ -7,21 +7,29 @@ from collections import Counter
 from rnn import RNN
 
 # Load the wikitext-2 dataset
+
+
 def load_wikitext(file_path):
     with open(file_path, 'r', encoding='utf-8') as f:
         text = f.read()
     return text
 
+
 def tokenize(text):
     return text.split(' ')
 
 # reduce vocabulary size
+
+
 def reduce_vocab(tokens, threshold=5):
     token_counts = Counter(tokens)
-    reduced_tokens = [token if token_counts[token] >= threshold else '<unk>' for token in tokens]
+    reduced_tokens = [token if token_counts[token] >=
+                      threshold else '<unk>' for token in tokens]
     return reduced_tokens
 
 # create a vocab mapping, from tokens to indices
+
+
 def create_vocab_mapping(tokens):
     vocab = set(tokens)
     word_to_idx = {word: idx for idx, word in enumerate(vocab)}
@@ -29,6 +37,8 @@ def create_vocab_mapping(tokens):
     return word_to_idx, idx_to_word
 
 # return a list of indices (based on the dict mapping words to tokens)
+
+
 def tokens_to_indices(tokens, word_to_idx):
     return [word_to_idx[token] for token in tokens]
 
@@ -37,7 +47,8 @@ def load_data(text):
     data_text = load_wikitext(text)
     data_tokens = tokenize(data_text)
     reduced_data_tokens = reduce_vocab(data_tokens)
-    data_word_to_idx, data_idx_to_word = create_vocab_mapping(reduced_data_tokens)
+    data_word_to_idx, data_idx_to_word = create_vocab_mapping(
+        reduced_data_tokens)
     vocab_size = len(data_word_to_idx)
     data_indices = tokens_to_indices(reduced_data_tokens, data_word_to_idx)
     return data_indices, vocab_size
@@ -59,13 +70,15 @@ def create_sequences(data, seq_length):
     inputs = []
     targets = []
     for i in range(len(data) - seq_length):
-        inputs.append(data[i:i + seq_length]) # input sequence
-        targets.append(data[i + 1:i + seq_length + 1]) # target sequence, shifted by one
+        inputs.append(data[i:i + seq_length])  # input sequence
+        # target sequence, shifted by one
+        targets.append(data[i + 1:i + seq_length + 1])
     return torch.tensor(inputs), torch.tensor(targets)
+
 
 # training setup
 batch_size = 32
-seq_length = 10 # unrolled time steps
+seq_length = 10  # unrolled time steps
 learning_rate = 0.001
 num_epochs = 5
 hidden_dim = 256
@@ -94,9 +107,11 @@ loss_func = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 print(f"Code is here!")
 
+
 def init_hidden(batch_size, hidden_dim, num_layers):
     hidden = torch.zeros(num_layers, batch_size, hidden_dim)
     return hidden
+
 
 train_losses = []
 
@@ -108,13 +123,14 @@ for epoch in range(num_epochs):
 
     hidden = init_hidden(batch_size, hidden_dim, num_layers).to(device)
     epoch_loss = 0.0
-    for batch_idx, (x,y) in enumerate(train_loader):
+    for batch_idx, (x, y) in enumerate(train_loader):
         x, y = x.to(device), y.to(device)
         actual_batch_size = x.size(0)
-        
+
         # Adjust the hidden state to match the actual batch size
         if hidden.size(1) != actual_batch_size:
-            hidden = init_hidden(actual_batch_size, hidden_dim, num_layers).to(device)
+            hidden = init_hidden(
+                actual_batch_size, hidden_dim, num_layers).to(device)
         # print(f"Processing batch {batch_idx + 1}/{len(train_loader)}")
         optimizer.zero_grad()
         output, hidden = model(x, hidden)
@@ -134,7 +150,8 @@ for epoch in range(num_epochs):
     print(f'Epoch {epoch + 1}/{num_epochs}, Loss: {avg_epoch_loss}')
 
 plt.figure(figsize=(10, 6))
-plt.plot(range(1, num_epochs + 1), train_losses, label='Training Loss', marker='o')
+plt.plot(range(1, num_epochs + 1), train_losses,
+         label='Training Loss', marker='o')
 plt.xlabel('Epoch')
 plt.ylabel('Loss')
 plt.title('Training Loss Curve')
