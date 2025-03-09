@@ -143,7 +143,7 @@ for epoch in range(num_epochs):
 
         epoch_loss += loss.item()
 
-        print(f"Batch {batch_idx + 1}/{len(train_loader)}, Loss: {loss.item()}")
+        # print(f"Batch {batch_idx + 1}/{len(train_loader)}, Loss: {loss.item()}")
     avg_epoch_loss = epoch_loss / len(train_loader)
     train_losses.append(avg_epoch_loss)  # Store the average loss
 

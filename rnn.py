@@ -1,5 +1,38 @@
 import torch.nn as nn
-from tuning import HyperParams
+from dataclasses import dataclass
+
+
+@dataclass
+class HyperParams:
+    '''Dataclass to store hyperparameters for the RNN Language Model'''
+
+    vocab_size: int
+    batch_size: int
+    seq_length: int
+    learning_rate: float
+    num_epochs: int
+    hidden_dim: int
+    num_layers: int
+    embedding_dim: int
+    dropout: float
+
+    def __hash__(self):
+        return hash(
+            (
+                self.vocab_size,
+                self.batch_size,
+                self.seq_length,
+                self.learning_rate,
+                self.num_epochs,
+                self.hidden_dim,
+                self.num_layers,
+                self.embedding_dim,
+                self.dropout
+            )
+        )
+
+    def __repr__(self):
+        return f'HP(vocab_size={self.vocab_size}, batch_size={self.batch_size}, seq_len={self.seq_length}, lr={self.learning_rate}, epochs={self.num_epochs}, hl_dim={self.hidden_dim}, num_layers={self.num_layers}, emb_dim={self.embedding_dim}, do={self.dropout})'
 
 
 class RNN(nn.Module):

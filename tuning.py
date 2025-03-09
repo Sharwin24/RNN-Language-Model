@@ -4,25 +4,9 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from collections import Counter
 from datasets import load_dataset
-from rnn import RNN, RNN_HP
-from dataclasses import dataclass
+from rnn import RNN, RNN_HP, HyperParams
+import time
 import matplotlib.pyplot as plt
-
-
-@dataclass
-class HyperParams:
-    vocab_size: int
-    batch_size: int
-    seq_length: int
-    learning_rate: float
-    num_epochs: int
-    hidden_dim: int
-    num_layers: int
-    embedding_dim: int
-    dropout: float
-
-    def __repr__(self):
-        return f'HP(vocab_size={self.vocab_size}, batch_size={self.batch_size}, seq_len={self.seq_length}, lr={self.learning_rate}, epochs={self.num_epochs}, hl_dim={self.hidden_dim}, num_layers={self.num_layers}, emb_dim={self.embedding_dim}, do={self.dropout})'
 
 
 class RNNLLM:
@@ -32,11 +16,24 @@ class RNNLLM:
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
         print(f'Using Torch device: {self.device}')
-        self.training_setup()
-        self.model_setup()
+        self.setup_training_data()
+        self.setup_training_model()
+
+    def find_best_hyperparams(self, hyperparams: list[HyperParams]):
+        hp_to_loss: dict[HyperParams, float] = {}
+        print(f'Evaluating {len(hyperparams)} hyperparameter configurations')
+        for i, hp in enumerate(hyperparams):
+            print(f'Evaluating HP {i+1}/{len(hyperparams)}')
+            self.HP = hp
+            self.setup_training_model()
+            self.train(debug=False)
+            self.hp_to_loss[hp] = self.evaluate(self.valid_loader)
+        # Return the hyperparameters with the lowest validation loss
+        return min(hp_to_loss, key=hp_to_loss.get)
 
     def train(self, debug=True):
         train_losses = []
+        start_time = time.time()
         for e in range(self.HP.num_epochs):
             print(f"Epoch {e+1}/{self.HP.num_epochs}") if debug else None
             self.model.train()
@@ -73,21 +70,28 @@ class RNNLLM:
                 f"Epoch {e+1}/{self.HP.num_epochs} Loss: {avg_epoch_loss}"
             ) if debug else None
             # End of epoch loop
+        end_time = time.time()
+        train_time_seconds = end_time - start_time
+        print(
+            f'Training took {train_time_seconds} seconds') if debug else None
         plt.plot(range(1, self.HP.num_epochs + 1), train_losses,
                  label='Training Loss', marker='o')
         plt.xlabel('Epochs')
         plt.ylabel('Loss')
         plt.title('Training Loss')
+        plt.legend()
+        plt.figtext(
+            0.15, 0.85, f'Training Time: {train_time_seconds:.2f} seconds', fontsize=10, ha='left')
         plt.savefig(f'training_loss_{self.HP.num_epochs}_epochs.png')
 
-    def model_setup(self):
+    def setup_training_model(self):
         self.model = RNN_HP(self.train_vocab, self.HP)
         self.model = self.model.to(self.device)
         self.loss_func = nn.CrossEntropyLoss()
         self.optimizer = optim.Adam(
             self.model.parameters(), lr=self.HP.learning_rate)
 
-    def training_setup(self):
+    def setup_training_data(self):
         # Load the data and create a reduced vocabulary
         self.train_indices, self.train_vocab = self.load_data(self.train_file)
         self.valid_indices, self.valid_vocab = self.load_data(self.valid_file)
@@ -159,3 +163,23 @@ class RNNLLM:
         data_indices = self.tokens_to_indices(
             reduced_data_tokens, data_word_to_idx)
         return data_indices, vocab_size
+
+
+if __name__ == '__main__':
+    hp = HyperParams(
+        vocab_size=15000,
+        batch_size=32,
+        seq_length=10,
+        learning_rate=0.001,
+        num_epochs=5,
+        hidden_dim=256,
+        num_layers=2,
+        embedding_dim=100,
+        dropout=0.2
+    )
+    rnn_llm = RNNLLM(
+        train_valid_test_files=(
+            'wiki2.train.txt', 'wiki2.valid.txt', 'wiki2.test.txt'
+        ),
+        hp=hp
+    )
