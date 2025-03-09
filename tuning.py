@@ -38,23 +38,26 @@ class RNNLLM:
             print(f"Epoch {e+1}/{self.HP.num_epochs}") if debug else None
             self.model.train()
             # Initialize hidden layers on every epoch
-            hidden = torch.zeros(self.HP.num_layers, self.HP.batch_size,
-                                 self.HP.hidden_dim).to(self.device)
+            hidden = self.init_hidden_layer(
+                self.HP.num_layers, self.HP.batch_size, self.HP.hidden_dim
+            )
             epoch_loss = 0.0
             for batch_idx, (x, y) in enumerate(self.train_loader):
                 x, y = x.to(self.device), y.to(self.device)
                 actual_batch_size = x.size(0)
                 # Adjust the hidden state to match the actual batch size
                 if hidden.size(1) != actual_batch_size:
-                    hidden = torch.zeros(self.HP.num_layers, actual_batch_size,
-                                         self.HP.hidden_dim).to(self.device)
+                    hidden = self.init_hidden_layer(
+                        self.HP.num_layers, actual_batch_size, self.HP.hidden_dim
+                    )
                 print(
                     f"Processing batch {batch_idx + 1}/{len(self.train_loader)}"
                 ) if debug else None
                 self.optimizer.zero_grad()
                 output, hidden = self.model(x, hidden)
                 loss = self.loss_func(
-                    output.view(-1, self.HP.vocab_size), y.view(-1))
+                    output.view(-1, self.train_vocab), y.view(-1)
+                )
                 loss.backward()
                 self.optimizer.step()
                 # Prevent backprop through time?
@@ -85,7 +88,8 @@ class RNNLLM:
         plt.savefig(f'training_loss_{self.HP.num_epochs}_epochs.png')
 
     def setup_training_model(self):
-        self.model = RNN_HP(self.train_vocab, self.HP)
+        print(f'Setting up training model with {self.HP}')
+        self.model = RNN_HP(self.HP)
         self.model = self.model.to(self.device)
         self.loss_func = nn.CrossEntropyLoss()
         self.optimizer = optim.Adam(
@@ -93,10 +97,18 @@ class RNNLLM:
 
     def setup_training_data(self):
         # Load the data and create a reduced vocabulary
+        print(f'Loading data and creating reduced vocabulary')
         self.train_indices, self.train_vocab = self.load_data(self.train_file)
         self.valid_indices, self.valid_vocab = self.load_data(self.valid_file)
         self.test_indices, self.test_vocab = self.load_data(self.test_file)
 
+        if self.HP.vocab_size != self.train_vocab:
+            self.HP.vocab_size = self.train_vocab
+        print(f'Train vocab size: {self.train_vocab}')
+        print(f'Valid vocab size: {self.valid_vocab}')
+        print(f'Test vocab size: {self.test_vocab}')
+
+        print(f'Creating input-output pairs for the dataset')
         # Create input-output pairs for the dataset
         self.train_inputs, self.train_targets = self.create_sequences(
             self.train_indices, self.HP.seq_length)
@@ -105,6 +117,7 @@ class RNNLLM:
         self.test_inputs, self.test_targets = self.create_sequences(
             self.test_indices, self.HP.seq_length)
 
+        print(f'Creating TensorDataset and DataLoader objects')
         # Create the TensorDataset objects
         self.train_dataset = TensorDataset(
             self.train_inputs, self.train_targets)
@@ -120,6 +133,9 @@ class RNNLLM:
         self.test_loader = DataLoader(
             self.test_dataset, self.HP.batch_size, shuffle=True)
 
+    def init_hidden_layer(self, num_layers, batch_size, hidden_dim):
+        return torch.zeros(num_layers, batch_size, hidden_dim).to(self.device)
+
     def create_sequences(self, data, seq_length):
         inputs = []
         targets = []
@@ -127,7 +143,7 @@ class RNNLLM:
             inputs.append(data[i:i + seq_length])  # input sequence
             # target sequence, shifted by one
             targets.append(data[i + 1:i + seq_length + 1])
-        return torch.tensor(inputs), torch.tensor(targets)
+        return torch.tensor(inputs, dtype=torch.long), torch.tensor(targets, dtype=torch.long)
 
     def load_wikitext(self, file_path):
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -151,7 +167,7 @@ class RNNLLM:
 
     def tokens_to_indices(self, tokens, word_to_idx):
         # return a list of indices (based on the dict mapping words to tokens)
-        return [word_to_idx[token] for token in tokens]
+        return [word_to_idx.get(token, word_to_idx['<unk>']) for token in tokens]
 
     def load_data(self, text):
         data_text = self.load_wikitext(text)
@@ -167,11 +183,11 @@ class RNNLLM:
 
 if __name__ == '__main__':
     hp = HyperParams(
-        vocab_size=15000,
+        vocab_size=10000,
         batch_size=32,
         seq_length=10,
         learning_rate=0.001,
-        num_epochs=5,
+        num_epochs=1,
         hidden_dim=256,
         num_layers=2,
         embedding_dim=100,
@@ -183,3 +199,4 @@ if __name__ == '__main__':
         ),
         hp=hp
     )
+    rnn_llm.train(debug=False)
