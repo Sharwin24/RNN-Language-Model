@@ -25,7 +25,7 @@ class HyperParams:
         return f'HP(vocab_size={self.vocab_size}, batch_size={self.batch_size}, seq_len={self.seq_length}, lr={self.learning_rate}, epochs={self.num_epochs}, hl_dim={self.hidden_dim}, num_layers={self.num_layers}, emb_dim={self.embedding_dim}, do={self.dropout})'
 
 
-class RNN_LLM:
+class RNNLLM:
     def __init__(self, train_valid_test_files: tuple[str, str, str], hp: HyperParams):
         self.train_file, self.valid_file, self.test_file = train_valid_test_files
         self.HP = hp
