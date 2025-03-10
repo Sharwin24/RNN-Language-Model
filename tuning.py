@@ -8,6 +8,7 @@ from rnn import RNN, RNN_HP, HyperParams
 import time
 import os
 from datetime import datetime
+import pickle
 import matplotlib.pyplot as plt
 
 
@@ -56,9 +57,27 @@ class RNNLLM:
         # print(f'Validation Loss: {avg_loss}')
         return avg_loss
 
+    def load_model(self, exp_dir: str):
+        model_weights_path = os.path.join(exp_dir, 'model_weights.pth')
+        if os.path.exists(model_weights_path):
+            self.model.load_state_dict(torch.load(model_weights_path))
+            print(f'Loaded model weights from {model_weights_path}')
+            return True
+        else:
+            return False
+
     def train(self, debug=True, exp_id: int = -1):
+        # Before training, if we've already trained a model
+        # with the exact same hyperparameters, we can load it instead of training
         self.setup_training_data()
         self.setup_training_model()
+        if exp_id == -1:
+            exp_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+        # Create experiment folder
+        experiment_folder = f'Experiment {exp_id}'
+        os.makedirs(experiment_folder, exist_ok=True)
+        if (self.load_model(experiment_folder)):
+            return
         train_losses = []
         valid_losses = []
         train_perplexity = []
@@ -120,15 +139,12 @@ class RNNLLM:
         print(
             f'Training took {train_time_str} (HH:MM:SS)'
         )
-        if exp_id == -1:
-            exp_id = datetime.now().strftime('%Y%m%d_%H%M%S')
-        # Create experiment folder
-        experiment_folder = f'Experiment {exp_id}'
-        os.makedirs(experiment_folder, exist_ok=True)
+        torch.save(self.model.state_dict(), os.join(
+            experiment_folder, 'model_weights.pth'))
 
-        # Write hyperparameters to a file
-        with open(os.path.join(experiment_folder, 'hyperparameters.txt'), 'w') as f:
-            f.write(str(self.HP))
+        # Write hyperparameters to a pickle file
+        with open(os.path.join(experiment_folder, 'hyperparameters.pkl'), 'wb') as f:
+            pickle.dump(self.HP, f)
 
         # Plot and save loss
         plt.figure(figsize=(10, 5))
