@@ -6,6 +6,8 @@ from collections import Counter
 from datasets import load_dataset
 from rnn import RNN, RNN_HP, HyperParams
 import time
+import os
+from datetime import datetime
 import matplotlib.pyplot as plt
 
 
@@ -16,23 +18,49 @@ class RNNLLM:
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
         print(f'Using Torch device: {self.device}')
-        self.setup_training_data()
-        self.setup_training_model()
 
     def find_best_hyperparams(self, hyperparams: list[HyperParams]):
-        hp_to_loss: dict[HyperParams, float] = {}
+        hp_to_loss: dict[HyperParams, tuple[float, float]] = {}
+        # Each value in the dict is a tuple of (loss, perplexity)
         print(f'Evaluating {len(hyperparams)} hyperparameter configurations')
         for i, hp in enumerate(hyperparams):
             print(f'Evaluating HP {i+1}/{len(hyperparams)}')
             self.HP = hp
-            self.setup_training_model()
-            self.train(debug=False)
-            self.hp_to_loss[hp] = self.evaluate(self.valid_loader)
+            self.train(debug=False, exp_id=i)
+            valid_loss = self.evaluate(self.valid_loader)
+            perplexity = torch.exp(torch.tensor(valid_loss)).item()
+            hp_to_loss[hp] = (valid_loss, perplexity)
         # Return the hyperparameters with the lowest validation loss
-        return min(hp_to_loss, key=hp_to_loss.get)
+        # return min(hp_to_loss, key=hp_to_loss.get)
+        return hp_to_loss
 
-    def train(self, debug=True):
+    def evaluate(self, data_loader):
+        self.model.eval()
+        hidden = self.init_hidden_layer(
+            self.HP.num_layers, self.HP.batch_size, self.HP.hidden_dim
+        )
+        total_loss = 0.0
+        with torch.no_grad():
+            for x, y in data_loader:
+                x, y = x.to(self.device), y.to(self.device)
+                actual_batch_size = x.size(0)
+                if hidden.size(1) != actual_batch_size:
+                    hidden = self.init_hidden_layer(
+                        self.HP.num_layers, actual_batch_size, self.HP.hidden_dim
+                    )
+                output, hidden = self.model(x, hidden)
+                loss = self.loss_func(
+                    output.view(-1, self.train_vocab), y.view(-1))
+                total_loss += loss.item()
+        avg_loss = total_loss / len(data_loader)
+        print(f'Validation Loss: {avg_loss}')
+        return avg_loss
+
+    def train(self, debug=True, exp_id: int = -1):
+        self.setup_training_data()
+        self.setup_training_model()
         train_losses = []
+        train_perplexity = []
         start_time = time.time()
         for e in range(self.HP.num_epochs):
             print(f"Epoch {e+1}/{self.HP.num_epochs}") if debug else None
@@ -68,17 +96,35 @@ class RNNLLM:
                 ) if debug else None
                 # End of batch loop
             avg_epoch_loss = epoch_loss / len(self.train_loader)
-            train_losses.append(epoch_loss)
+            epoch_perplexity = torch.exp(torch.tensor(avg_epoch_loss)).item()
+            train_perplexity.append(epoch_perplexity)
+            train_losses.append(avg_epoch_loss)
             print(
-                f"Epoch {e+1}/{self.HP.num_epochs} Loss: {avg_epoch_loss}"
-            ) if debug else None
+                f"Epoch {e+1}/{self.HP.num_epochs} Loss: {avg_epoch_loss}, Perplexity: {epoch_perplexity}"
+            )
             # End of epoch loop
         end_time = time.time()
         train_time_seconds = end_time - start_time
         train_time_minutes = train_time_seconds / 60
+        train_time_hours = int(train_time_seconds // 3600)
+        train_time_minutes = int((train_time_seconds % 3600) // 60)
+        train_time_seconds = int(train_time_seconds % 60)
+        train_time_str = f'{train_time_hours:02d}:{train_time_minutes:02d}:{train_time_seconds:02d}'
         print(
-            f'Training took {train_time_minutes:.2f} minutes'
-        ) if debug else None
+            f'Training took {train_time_str} (HH:MM:SS)'
+        )
+        if exp_id == -1:
+            exp_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+        # Create experiment folder
+        experiment_folder = f'Experiment {exp_id}'
+        os.makedirs(experiment_folder, exist_ok=True)
+
+        # Write hyperparameters to a file
+        with open(os.path.join(experiment_folder, 'hyperparameters.txt'), 'w') as f:
+            f.write(str(self.HP))
+
+        # Plot and save training loss
+        plt.figure(figsize=(10, 5))
         plt.plot(range(1, self.HP.num_epochs + 1), train_losses,
                  label='Training Loss', marker='o')
         plt.xlabel('Epochs')
@@ -86,8 +132,23 @@ class RNNLLM:
         plt.title('Training Loss')
         plt.legend()
         plt.figtext(
-            0.15, 0.85, f'Training Time: {train_time_minutes:.2f} minutes', fontsize=10, ha='left')
-        plt.savefig(f'training_loss_{self.HP.num_epochs}_epochs.png')
+            0.15, 0.85, f'Training Time: {train_time_str} (HH::MM::SS)', fontsize=10, ha='left'
+        )
+        plt.savefig(os.path.join(experiment_folder, f'training_loss.png'))
+
+        # Plot and save training perplexity
+        plt.figure(figsize=(10, 5))
+        plt.plot(range(1, self.HP.num_epochs + 1), train_perplexity,
+                 label='Training Perplexity', marker='o')
+        plt.xlabel('Epochs')
+        plt.ylabel('Perplexity')
+        plt.title('Training Perplexity')
+        plt.legend()
+        plt.figtext(
+            0.15, 0.85, f'Training Time: {train_time_str} (HH::MM::SS)', fontsize=10, ha='left'
+        )
+        plt.savefig(os.path.join(experiment_folder,
+                    f'training_perplexity.png'))
 
     def setup_training_model(self):
         print(f'Setting up training model with {self.HP}')
@@ -155,7 +216,7 @@ class RNNLLM:
     def tokenize(self, text):
         return text.split(' ')
 
-    def reduce_vocab(self, tokens, threshold=5):
+    def reduce_vocab(self, tokens, threshold=15):
         token_counts = Counter(tokens)
         reduced_tokens = [token if token_counts[token] >=
                           threshold else '<unk>' for token in tokens]
@@ -186,10 +247,21 @@ class RNNLLM:
 if __name__ == '__main__':
     hp = HyperParams(
         vocab_size=10000,
-        batch_size=32,
-        seq_length=10,
+        batch_size=64,
+        seq_length=20,
         learning_rate=0.001,
-        num_epochs=2,
+        num_epochs=10,
+        hidden_dim=256,
+        num_layers=1,
+        embedding_dim=100,
+        dropout=0
+    )
+    multi_layer_rnn = HyperParams(
+        vocab_size=10000,
+        batch_size=64,
+        seq_length=20,
+        learning_rate=0.001,
+        num_epochs=10,
         hidden_dim=256,
         num_layers=2,
         embedding_dim=100,
@@ -201,6 +273,10 @@ if __name__ == '__main__':
         ),
         hp=hp
     )
-    rnn_llm.train(debug=False)
-    # hps = [hp]
-    # best_hp = rnn_llm.find_best_hyperparams(hps)
+    # rnn_llm.train(debug=False)
+    hps = [hp, multi_layer_rnn]
+    hp_to_loss_map = rnn_llm.find_best_hyperparams(hps)
+    for hp, (loss, perplexity) in hp_to_loss_map.items():
+        print('--------------------')
+        print(f'{hp}\nLoss: {loss}, Perplexity: {perplexity}')
+        print('--------------------')
