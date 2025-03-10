@@ -53,7 +53,7 @@ class RNNLLM:
                     output.view(-1, self.train_vocab), y.view(-1))
                 total_loss += loss.item()
         avg_loss = total_loss / len(data_loader)
-        print(f'Validation Loss: {avg_loss}')
+        # print(f'Validation Loss: {avg_loss}')
         return avg_loss
 
     def train(self, debug=True, exp_id: int = -1):
@@ -66,13 +66,13 @@ class RNNLLM:
         start_time = time.time()
         for e in range(self.HP.num_epochs):
             print(f"Epoch {e+1}/{self.HP.num_epochs}") if debug else None
-            self.model.train()
             # Initialize hidden layers on every epoch
             hidden = self.init_hidden_layer(
                 self.HP.num_layers, self.HP.batch_size, self.HP.hidden_dim
             )
             epoch_loss = 0.0
             for batch_idx, (x, y) in enumerate(self.train_loader):
+                self.model.train()
                 x, y = x.to(self.device), y.to(self.device)
                 actual_batch_size = x.size(0)
                 # Adjust the hidden state to match the actual batch size
@@ -261,7 +261,7 @@ if __name__ == '__main__':
         batch_size=64,
         seq_length=20,
         learning_rate=0.001,
-        num_epochs=10,
+        num_epochs=1,
         hidden_dim=256,
         num_layers=1,
         embedding_dim=100,
@@ -272,7 +272,7 @@ if __name__ == '__main__':
         batch_size=64,
         seq_length=20,
         learning_rate=0.001,
-        num_epochs=10,
+        num_epochs=1,
         hidden_dim=256,
         num_layers=2,
         embedding_dim=100,
