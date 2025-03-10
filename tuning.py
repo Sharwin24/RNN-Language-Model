@@ -75,8 +75,10 @@ class RNNLLM:
             # End of epoch loop
         end_time = time.time()
         train_time_seconds = end_time - start_time
+        train_time_minutes = train_time_seconds / 60
         print(
-            f'Training took {train_time_seconds} seconds') if debug else None
+            f'Training took {train_time_minutes:.2f} minutes'
+        ) if debug else None
         plt.plot(range(1, self.HP.num_epochs + 1), train_losses,
                  label='Training Loss', marker='o')
         plt.xlabel('Epochs')
@@ -84,7 +86,7 @@ class RNNLLM:
         plt.title('Training Loss')
         plt.legend()
         plt.figtext(
-            0.15, 0.85, f'Training Time: {train_time_seconds:.2f} seconds', fontsize=10, ha='left')
+            0.15, 0.85, f'Training Time: {train_time_minutes:.2f} minutes', fontsize=10, ha='left')
         plt.savefig(f'training_loss_{self.HP.num_epochs}_epochs.png')
 
     def setup_training_model(self):
@@ -187,7 +189,7 @@ if __name__ == '__main__':
         batch_size=32,
         seq_length=10,
         learning_rate=0.001,
-        num_epochs=1,
+        num_epochs=2,
         hidden_dim=256,
         num_layers=2,
         embedding_dim=100,
@@ -200,3 +202,5 @@ if __name__ == '__main__':
         hp=hp
     )
     rnn_llm.train(debug=False)
+    # hps = [hp]
+    # best_hp = rnn_llm.find_best_hyperparams(hps)
