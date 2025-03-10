@@ -61,7 +61,6 @@ class RNNLLM:
         model_weights_path = os.path.join(exp_dir, 'model_weights.pth')
         if os.path.exists(model_weights_path):
             self.model.load_state_dict(torch.load(model_weights_path))
-            print(f'Loaded model weights from {model_weights_path}')
             return True
         else:
             return False
@@ -77,6 +76,7 @@ class RNNLLM:
         experiment_folder = f'Experiment {exp_id}'
         os.makedirs(experiment_folder, exist_ok=True)
         if (self.load_model(experiment_folder)):
+            print(f'Skipping training for model: {self.HP}')
             return
         train_losses = []
         valid_losses = []
