@@ -60,7 +60,9 @@ class RNNLLM:
         self.setup_training_data()
         self.setup_training_model()
         train_losses = []
+        valid_losses = []
         train_perplexity = []
+        valid_perplexity = []
         start_time = time.time()
         for e in range(self.HP.num_epochs):
             print(f"Epoch {e+1}/{self.HP.num_epochs}") if debug else None
@@ -91,6 +93,11 @@ class RNNLLM:
                 # Prevent backprop through time?
                 hidden = hidden.detach()
                 epoch_loss += loss.item()
+                # Compute validation loss at the end of each epoch
+                valid_loss = self.evaluate(self.valid_loader)
+                valid_losses.append(valid_loss)
+                valid_perplexity.append(
+                    torch.exp(torch.tensor(valid_loss)).item())
                 print(
                     f"Batch {batch_idx + 1}/{len(self.train_loader)}, Loss: {loss.item()}"
                 ) if debug else None
@@ -123,32 +130,36 @@ class RNNLLM:
         with open(os.path.join(experiment_folder, 'hyperparameters.txt'), 'w') as f:
             f.write(str(self.HP))
 
-        # Plot and save training loss
+        # Plot and save loss
         plt.figure(figsize=(10, 5))
         plt.plot(range(1, self.HP.num_epochs + 1), train_losses,
-                 label='Training Loss', marker='o')
+                 label='Training Loss', marker='o', color='b')
+        plt.plot(range(1, self.HP.num_epochs + 1), valid_losses,
+                 label='Validation Loss', marker='o', color='r')
         plt.xlabel('Epochs')
         plt.ylabel('Loss')
-        plt.title('Training Loss')
+        plt.title('Loss Curve')
         plt.legend()
         plt.figtext(
             0.15, 0.85, f'Training Time: {train_time_str} (HH::MM::SS)', fontsize=10, ha='left'
         )
-        plt.savefig(os.path.join(experiment_folder, f'training_loss.png'))
+        plt.savefig(os.path.join(experiment_folder, f'loss_curve.png'))
 
-        # Plot and save training perplexity
+        # Plot and save perplexity
         plt.figure(figsize=(10, 5))
         plt.plot(range(1, self.HP.num_epochs + 1), train_perplexity,
-                 label='Training Perplexity', marker='o')
+                 label='Training Perplexity', marker='o', color='b')
+        plt.plot(range(1, self.HP.num_epochs + 1), valid_perplexity,
+                 label='Validation Perplexity', marker='o', color='r')
         plt.xlabel('Epochs')
         plt.ylabel('Perplexity')
-        plt.title('Training Perplexity')
+        plt.title('Perplexity Curve')
         plt.legend()
         plt.figtext(
             0.15, 0.85, f'Training Time: {train_time_str} (HH::MM::SS)', fontsize=10, ha='left'
         )
         plt.savefig(os.path.join(experiment_folder,
-                    f'training_perplexity.png'))
+                    f'perplexity_curve.png'))
 
     def setup_training_model(self):
         print(f'Setting up training model with {self.HP}')

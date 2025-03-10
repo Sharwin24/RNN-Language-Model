@@ -1,0 +1,1 @@
+HP(vocab_size=10860, batch_size=64, seq_len=20, lr=0.001, epochs=10, hl_dim=256, num_layers=1, emb_dim=100, do=0)
