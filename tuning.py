@@ -79,8 +79,8 @@ class RNNLLM:
             print(f'Skipping training for model: {self.HP}')
             return
         train_losses = []
-        valid_losses = []
         train_perplexity = []
+        valid_losses = []
         valid_perplexity = []
         start_time = time.time()
         for e in range(self.HP.num_epochs):
@@ -112,11 +112,6 @@ class RNNLLM:
                 # Prevent backprop through time?
                 hidden = hidden.detach()
                 epoch_loss += loss.item()
-                # Compute validation loss at the end of each epoch
-                valid_loss = self.evaluate(self.valid_loader)
-                valid_losses.append(valid_loss)
-                valid_perplexity.append(
-                    torch.exp(torch.tensor(valid_loss)).item())
                 print(
                     f"Batch {batch_idx + 1}/{len(self.train_loader)}, Loss: {loss.item()}"
                 ) if debug else None
@@ -125,8 +120,13 @@ class RNNLLM:
             epoch_perplexity = torch.exp(torch.tensor(avg_epoch_loss)).item()
             train_perplexity.append(epoch_perplexity)
             train_losses.append(avg_epoch_loss)
+
+            # Validation loss
+            valid_loss = self.evaluate(self.valid_loader)
+            valid_losses.append(valid_loss)
+            valid_perplexity.append(torch.exp(torch.tensor(valid_loss)).item())
             print(
-                f"Epoch {e+1}/{self.HP.num_epochs} Loss: {avg_epoch_loss}, Perplexity: {epoch_perplexity}"
+                f"Epoch {e+1}/{self.HP.num_epochs} Train Loss: {avg_epoch_loss}, Valid Loss: {valid_loss} Perplexity: {epoch_perplexity}"
             )
             # End of epoch loop
         end_time = time.time()
@@ -139,7 +139,9 @@ class RNNLLM:
         print(
             f'Training took {train_time_str} (HH:MM:SS)'
         )
-        torch.save(self.model.state_dict(), os.join(
+
+        # Save the model weights and hyperparameters
+        torch.save(self.model.state_dict(), os.path.join(
             experiment_folder, 'model_weights.pth'))
 
         # Write hyperparameters to a pickle file
@@ -292,7 +294,7 @@ if __name__ == '__main__':
         hidden_dim=256,
         num_layers=2,
         embedding_dim=100,
-        dropout=0.2
+        dropout=0.3
     )
     rnn_llm = RNNLLM(
         train_valid_test_files=(
