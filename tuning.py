@@ -212,7 +212,8 @@ class RNNLLM:
         self.test_inputs, self.test_targets = self.create_sequences(
             self.test_indices, self.HP.seq_length)
 
-        print(f"Number of training sequences: {len(self.train_inputs)}")  # LOG: Added
+        # LOG: Added
+        print(f"Number of training sequences: {len(self.train_inputs)}")
         print(f"Sequence length: {self.HP.seq_length}")  # LOG: Added
 
         print(f'Creating TensorDataset and DataLoader objects')
@@ -231,8 +232,10 @@ class RNNLLM:
         self.test_loader = DataLoader(
             self.test_dataset, self.HP.batch_size, shuffle=False)
 
-        print(f"Number of batches in train_loader: {len(self.train_loader)}")  # LOG: Added
-        print(f"Batch size in train_loader: {self.HP.batch_size}")  # LOG: Added
+        # LOG: Added
+        print(f"Number of batches in train_loader: {len(self.train_loader)}")
+        # LOG: Added
+        print(f"Batch size in train_loader: {self.HP.batch_size}")
 
     def init_hidden_layer(self, num_layers, batch_size, hidden_dim):
         return torch.zeros(num_layers, batch_size, hidden_dim).to(self.device)
@@ -245,13 +248,14 @@ class RNNLLM:
     #         # target sequence, shifted by one
     #         targets.append(data[i + 1:i + seq_length + 1])
     #     return torch.tensor(inputs, dtype=torch.long), torch.tensor(targets, dtype=torch.long)
-    
+
     def create_sequences(self, data, seq_length):
         inputs = []
         targets = []
         for i in range(0, len(data) - seq_length, seq_length):  # Slide by seq_length
             inputs.append(data[i:i + seq_length])  # input sequence
-            targets.append(data[i + 1:i + seq_length + 1])  # target sequence, shifted by one
+            # target sequence, shifted by one
+            targets.append(data[i + 1:i + seq_length + 1])
         return torch.tensor(inputs, dtype=torch.long), torch.tensor(targets, dtype=torch.long)
 
     def load_wikitext(self, file_path):
