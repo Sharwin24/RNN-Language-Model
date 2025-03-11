@@ -1,10 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader, TensorDataset
-from collections import Counter
-from datasets import load_dataset
-from rnn import RNN, RNN_HP, HyperParams
+from torch.utils.data import DataLoader, TensorDataset
+from rnn import RNN_HP, HyperParams
 import time
 import os
 from datetime import datetime
@@ -21,16 +19,17 @@ class RNNLLM:
         print(f'Using Torch device: {self.device}')
 
     def find_best_hyperparams(self, hyperparams: list[HyperParams]):
-        hp_to_loss: dict[HyperParams, tuple[float, float]] = {}
-        # Each value in the dict is a tuple of (loss, perplexity)
+        hp_to_loss: dict[HyperParams, tuple[float, float, float]] = {}
+        # Each value in the dict is a tuple of (valid loss, test_loss, perplexity)
         print(f'Evaluating {len(hyperparams)} hyperparameter configurations')
         for i, hp in enumerate(hyperparams):
             print(f'Evaluating HP {i+1}/{len(hyperparams)}')
             self.HP = hp
             self.train(debug=False, exp_id=i)
             valid_loss = self.evaluate(self.valid_loader)
-            perplexity = torch.exp(torch.tensor(valid_loss)).item()
-            hp_to_loss[hp] = (valid_loss, perplexity)
+            test_loss = self.evaluate(self.test_loader)
+            valid_perplexity = torch.exp(torch.tensor(valid_loss)).item()
+            hp_to_loss[hp] = (valid_loss, test_loss, valid_perplexity)
         # Return the hyperparameters with the lowest validation loss
         # return min(hp_to_loss, key=hp_to_loss.get)
         return hp_to_loss
@@ -51,10 +50,9 @@ class RNNLLM:
                     )
                 output, hidden = self.model(x, hidden)
                 loss = self.loss_func(
-                    output.view(-1, self.train_vocab), y.view(-1))
+                    output.view(-1, self.HP.vocab_size), y.view(-1))
                 total_loss += loss.item()
         avg_loss = total_loss / len(data_loader)
-        # print(f'Validation Loss: {avg_loss}')
         return avg_loss
 
     def load_model(self, exp_dir: str):
@@ -105,7 +103,7 @@ class RNNLLM:
                 self.optimizer.zero_grad()
                 output, hidden = self.model(x, hidden)
                 loss = self.loss_func(
-                    output.view(-1, self.train_vocab), y.view(-1)
+                    output.view(-1, self.HP.vocab_size), y.view(-1)
                 )
                 loss.backward()
                 self.optimizer.step()
@@ -194,8 +192,6 @@ class RNNLLM:
         self.valid_indices, self.valid_vocab = self.load_data(self.valid_file)
         self.test_indices, self.test_vocab = self.load_data(self.test_file)
 
-        if self.HP.vocab_size != self.train_vocab:
-            self.HP.vocab_size = self.train_vocab
         print(f'Train vocab size: {self.train_vocab}')
         print(f'Valid vocab size: {self.valid_vocab}')
         print(f'Test vocab size: {self.test_vocab}')
@@ -245,17 +241,11 @@ class RNNLLM:
     def tokenize(self, text):
         return text.split(' ')
 
-    def reduce_vocab(self, tokens, threshold=15):
-        token_counts = Counter(tokens)
-        reduced_tokens = [token if token_counts[token] >=
-                          threshold else '<unk>' for token in tokens]
-        return reduced_tokens
-
     def create_vocab_mapping(self, tokens):
-        vocab = set(tokens)
+        vocab = sorted(set(tokens))[:self.HP.vocab_size - 1]
+        vocab.append('<unk>')
         word_to_idx = {word: idx for idx, word in enumerate(vocab)}
-        idx_to_word = {idx: word for word, idx in word_to_idx.items()}
-        return word_to_idx, idx_to_word
+        return word_to_idx
 
     def tokens_to_indices(self, tokens, word_to_idx):
         # return a list of indices (based on the dict mapping words to tokens)
@@ -264,12 +254,10 @@ class RNNLLM:
     def load_data(self, text):
         data_text = self.load_wikitext(text)
         data_tokens = self.tokenize(data_text)
-        reduced_data_tokens = self.reduce_vocab(data_tokens)
-        data_word_to_idx, data_idx_to_word = self.create_vocab_mapping(
-            reduced_data_tokens)
+        # reduced_data_tokens = self.reduce_vocab(data_tokens)
+        data_word_to_idx = self.create_vocab_mapping(data_tokens)
         vocab_size = len(data_word_to_idx)
-        data_indices = self.tokens_to_indices(
-            reduced_data_tokens, data_word_to_idx)
+        data_indices = self.tokens_to_indices(data_tokens, data_word_to_idx)
         return data_indices, vocab_size
 
 
@@ -279,22 +267,22 @@ if __name__ == '__main__':
         batch_size=64,
         seq_length=20,
         learning_rate=0.001,
-        num_epochs=1,
+        num_epochs=10,
         hidden_dim=256,
         num_layers=1,
         embedding_dim=100,
-        dropout=0
+        dropout=0.4
     )
     multi_layer_rnn = HyperParams(
         vocab_size=10000,
         batch_size=64,
         seq_length=20,
         learning_rate=0.001,
-        num_epochs=1,
+        num_epochs=10,
         hidden_dim=256,
         num_layers=2,
         embedding_dim=100,
-        dropout=0.3
+        dropout=0.4
     )
     rnn_llm = RNNLLM(
         train_valid_test_files=(
@@ -305,7 +293,9 @@ if __name__ == '__main__':
     # rnn_llm.train(debug=False)
     hps = [hp, multi_layer_rnn]
     hp_to_loss_map = rnn_llm.find_best_hyperparams(hps)
-    for hp, (loss, perplexity) in hp_to_loss_map.items():
+    for hp, (valid_loss, test_loss, valid_perplexity) in hp_to_loss_map.items():
         print('--------------------')
-        print(f'{hp}\nLoss: {loss}, Perplexity: {perplexity}')
+        print(
+            f'{hp}\nValidation Loss: {valid_loss}, Test Loss: {test_loss}, Validation Perplexity: {valid_perplexity}'
+        )
         print('--------------------')
