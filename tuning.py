@@ -2,12 +2,14 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-from rnn import RNN_HP, HyperParams
+from rnn import RNN, HyperParams
 import time
 import os
 from datetime import datetime
 import pickle
 import matplotlib.pyplot as plt
+from collections import Counter
+import math
 
 
 class RNNLLM:
@@ -18,7 +20,7 @@ class RNNLLM:
             "cuda" if torch.cuda.is_available() else "cpu")
         print(f'Using Torch device: {self.device}')
 
-    def find_best_hyperparams(self, hyperparams: list[HyperParams]):
+    def train_models(self, hyperparams: list[HyperParams]):
         hp_to_loss: dict[HyperParams, tuple[float, float, float]] = {}
         # Each value in the dict is a tuple of (valid loss, test_loss, perplexity)
         print(f'Evaluating {len(hyperparams)} hyperparameter configurations')
@@ -26,12 +28,9 @@ class RNNLLM:
             print(f'Evaluating HP {i+1}/{len(hyperparams)}')
             self.HP = hp
             self.train(debug=False, exp_id=i)
-            valid_loss = self.evaluate(self.valid_loader)
-            test_loss = self.evaluate(self.test_loader)
-            valid_perplexity = torch.exp(torch.tensor(valid_loss)).item()
+            valid_loss, valid_perplexity = self.evaluate(self.valid_loader)
+            test_loss, test_perplexity = self.evaluate(self.test_loader)
             hp_to_loss[hp] = (valid_loss, test_loss, valid_perplexity)
-        # Return the hyperparameters with the lowest validation loss
-        # return min(hp_to_loss, key=hp_to_loss.get)
         return hp_to_loss
 
     def evaluate(self, data_loader):
@@ -48,20 +47,26 @@ class RNNLLM:
                     hidden = self.init_hidden_layer(
                         self.HP.num_layers, actual_batch_size, self.HP.hidden_dim
                     )
+                hidden = hidden.detach()
                 output, hidden = self.model(x, hidden)
                 loss = self.loss_func(
                     output.view(-1, self.HP.vocab_size), y.view(-1))
                 total_loss += loss.item()
         avg_loss = total_loss / len(data_loader)
-        return avg_loss
+        perplexity = math.exp(avg_loss)
+        return avg_loss, perplexity
 
     def load_model(self, exp_dir: str):
         model_weights_path = os.path.join(exp_dir, 'model_weights.pth')
-        if os.path.exists(model_weights_path):
-            self.model.load_state_dict(torch.load(model_weights_path))
-            return True
-        else:
-            return False
+        hp_pickle_path = os.path.join(exp_dir, f'HP_{self.HP.__hash__()}.pkl')
+        if os.path.exists(hp_pickle_path):
+            with open(hp_pickle_path, 'rb') as f:
+                stored_hp = pickle.load(f)
+                if stored_hp == self.HP:
+                    print(
+                        f'Found existing model with the same hyperparameters: {self.HP}')
+                return True
+        return False
 
     def train(self, debug=True, exp_id: int = -1):
         # Before training, if we've already trained a model
@@ -77,9 +82,9 @@ class RNNLLM:
             print(f'Skipping training for model: {self.HP}')
             return
         train_losses = []
-        train_perplexity = []
+        train_perplexities = []
         valid_losses = []
-        valid_perplexity = []
+        valid_perplexities = []
         start_time = time.time()
         for e in range(self.HP.num_epochs):
             print(f"Epoch {e+1}/{self.HP.num_epochs}") if debug else None
@@ -106,6 +111,8 @@ class RNNLLM:
                     output.view(-1, self.HP.vocab_size), y.view(-1)
                 )
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), max_norm=5)  # Clipping
                 self.optimizer.step()
                 # Prevent backprop through time?
                 hidden = hidden.detach()
@@ -115,16 +122,16 @@ class RNNLLM:
                 ) if debug else None
                 # End of batch loop
             avg_epoch_loss = epoch_loss / len(self.train_loader)
-            epoch_perplexity = torch.exp(torch.tensor(avg_epoch_loss)).item()
-            train_perplexity.append(epoch_perplexity)
+            epoch_perplexity = math.exp(avg_epoch_loss)
+            train_perplexities.append(epoch_perplexity)
             train_losses.append(avg_epoch_loss)
 
             # Validation loss
-            valid_loss = self.evaluate(self.valid_loader)
+            valid_loss, valid_perplexity = self.evaluate(self.valid_loader)
             valid_losses.append(valid_loss)
-            valid_perplexity.append(torch.exp(torch.tensor(valid_loss)).item())
+            valid_perplexities.append(valid_perplexity)
             print(
-                f"Epoch {e+1}/{self.HP.num_epochs} Train Loss: {avg_epoch_loss}, Valid Loss: {valid_loss} Perplexity: {epoch_perplexity}"
+                f"Epoch {e+1}/{self.HP.num_epochs} Train Loss: {avg_epoch_loss}, Valid Loss: {valid_loss} Train Perplexity: {epoch_perplexity} Valid Perplexity: {valid_perplexity}"
             )
             # End of epoch loop
         end_time = time.time()
@@ -143,7 +150,7 @@ class RNNLLM:
             experiment_folder, 'model_weights.pth'))
 
         # Write hyperparameters to a pickle file
-        with open(os.path.join(experiment_folder, 'hyperparameters.pkl'), 'wb') as f:
+        with open(os.path.join(experiment_folder, f'HP_{self.HP.__hash__()}.pkl'), 'wb') as f:
             pickle.dump(self.HP, f)
 
         # Plot and save loss
@@ -179,7 +186,7 @@ class RNNLLM:
 
     def setup_training_model(self):
         print(f'Setting up training model with {self.HP}')
-        self.model = RNN_HP(self.HP)
+        self.model = RNN(self.HP)
         self.model = self.model.to(self.device)
         self.loss_func = nn.CrossEntropyLoss()
         self.optimizer = optim.Adam(
@@ -217,9 +224,9 @@ class RNNLLM:
         self.train_loader = DataLoader(
             self.train_dataset, self.HP.batch_size, shuffle=True)
         self.valid_loader = DataLoader(
-            self.valid_dataset, self.HP.batch_size, shuffle=True)
+            self.valid_dataset, self.HP.batch_size, shuffle=False)
         self.test_loader = DataLoader(
-            self.test_dataset, self.HP.batch_size, shuffle=True)
+            self.test_dataset, self.HP.batch_size, shuffle=False)
 
     def init_hidden_layer(self, num_layers, batch_size, hidden_dim):
         return torch.zeros(num_layers, batch_size, hidden_dim).to(self.device)
@@ -242,9 +249,12 @@ class RNNLLM:
         return text.split(' ')
 
     def create_vocab_mapping(self, tokens):
-        vocab = sorted(set(tokens))[:self.HP.vocab_size - 1]
-        vocab.append('<unk>')
-        word_to_idx = {word: idx for idx, word in enumerate(vocab)}
+        counter = Counter(tokens)
+        vocab = counter.most_common(self.HP.vocab_size - 1)
+        word_to_idx = {}
+        for idx, (word, _) in enumerate(vocab):
+            word_to_idx[word] = idx
+        word_to_idx['<unk>'] = 0
         return word_to_idx
 
     def tokens_to_indices(self, tokens, word_to_idx):
@@ -254,7 +264,6 @@ class RNNLLM:
     def load_data(self, text):
         data_text = self.load_wikitext(text)
         data_tokens = self.tokenize(data_text)
-        # reduced_data_tokens = self.reduce_vocab(data_tokens)
         data_word_to_idx = self.create_vocab_mapping(data_tokens)
         vocab_size = len(data_word_to_idx)
         data_indices = self.tokens_to_indices(data_tokens, data_word_to_idx)
@@ -264,25 +273,25 @@ class RNNLLM:
 if __name__ == '__main__':
     hp = HyperParams(
         vocab_size=10000,
-        batch_size=64,
-        seq_length=20,
+        batch_size=32,
+        seq_length=25,
         learning_rate=0.001,
-        num_epochs=10,
+        num_epochs=2,
         hidden_dim=256,
         num_layers=1,
         embedding_dim=100,
-        dropout=0.4
+        dropout=0
     )
     multi_layer_rnn = HyperParams(
         vocab_size=10000,
-        batch_size=64,
-        seq_length=20,
+        batch_size=32,
+        seq_length=25,
         learning_rate=0.001,
-        num_epochs=10,
+        num_epochs=2,
         hidden_dim=256,
         num_layers=2,
         embedding_dim=100,
-        dropout=0.4
+        dropout=0.5
     )
     rnn_llm = RNNLLM(
         train_valid_test_files=(
@@ -292,7 +301,7 @@ if __name__ == '__main__':
     )
     # rnn_llm.train(debug=False)
     hps = [hp, multi_layer_rnn]
-    hp_to_loss_map = rnn_llm.find_best_hyperparams(hps)
+    hp_to_loss_map = rnn_llm.train_models(hps)
     for hp, (valid_loss, test_loss, valid_perplexity) in hp_to_loss_map.items():
         print('--------------------')
         print(

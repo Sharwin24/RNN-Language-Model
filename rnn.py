@@ -2,32 +2,6 @@ import torch.nn as nn
 from dataclasses import dataclass
 
 
-class RNN(nn.Module):
-    def __init__(self, vocab_size, embedding_dim=100, hidden_dim=256, num_layers=2, dropout=0.2):
-        super().__init__()  # Remove 'self' from super() call
-        # Embedding layer
-        self.embedding = nn.Embedding(vocab_size, embedding_dim)
-        # RNN layers
-        self.rnn = nn.RNN(
-            input_size=embedding_dim,
-            hidden_size=hidden_dim,
-            num_layers=num_layers,
-            batch_first=True,
-            dropout=dropout
-        )
-        # Output layer
-        self.fc = nn.Linear(hidden_dim, vocab_size)
-
-    def forward(self, x, hidden):
-        # Embed the input
-        embedded = self.embedding(x)
-        # Pass through RNN
-        rnn_out, hidden = self.rnn(embedded, hidden)
-        # Take the last time step and pass through final layer
-        output = self.fc(rnn_out)
-        return output, hidden
-
-
 @dataclass
 class HyperParams:
     '''Dataclass to store hyperparameters for the RNN Language Model'''
@@ -57,11 +31,24 @@ class HyperParams:
             )
         )
 
+    def __eq__(self, value: 'HyperParams'):
+        return (
+            self.vocab_size == value.vocab_size
+            and self.batch_size == value.batch_size
+            and self.seq_length == value.seq_length
+            and self.learning_rate == value.learning_rate
+            and self.num_epochs == value.num_epochs
+            and self.hidden_dim == value.hidden_dim
+            and self.num_layers == value.num_layers
+            and self.embedding_dim == value.embedding_dim
+            and self.dropout == value.dropout
+        )
+
     def __repr__(self):
         return f'HP(vocab_size={self.vocab_size}, batch_size={self.batch_size}, seq_len={self.seq_length}, lr={self.learning_rate}, epochs={self.num_epochs}, hl_dim={self.hidden_dim}, num_layers={self.num_layers}, emb_dim={self.embedding_dim}, do={self.dropout})'
 
 
-class RNN_HP(nn.Module):
+class RNN(nn.Module):
     def __init__(self, hp: HyperParams):
         super().__init__()  # Remove 'self' from super() call
         self.HP = hp
@@ -75,6 +62,8 @@ class RNN_HP(nn.Module):
             batch_first=True,
             dropout=hp.dropout
         )
+        # Dropout layer
+        self.dropout = nn.Dropout(hp.dropout)
         # Output layer
         self.fc = nn.Linear(hp.hidden_dim, hp.vocab_size)
 
@@ -84,5 +73,6 @@ class RNN_HP(nn.Module):
         # Pass through RNN
         rnn_out, hidden = self.rnn(embedded, hidden)
         # Take the last time step and pass through final layer
-        output = self.fc(rnn_out)
+        logits = self.dropout(rnn_out)
+        output = self.fc(logits)
         return output, hidden
