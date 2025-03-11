@@ -170,9 +170,9 @@ class RNNLLM:
 
         # Plot and save perplexity
         plt.figure(figsize=(10, 5))
-        plt.plot(range(1, self.HP.num_epochs + 1), train_perplexity,
+        plt.plot(range(1, self.HP.num_epochs + 1), train_perplexities,
                  label='Training Perplexity', marker='o', color='b')
-        plt.plot(range(1, self.HP.num_epochs + 1), valid_perplexity,
+        plt.plot(range(1, self.HP.num_epochs + 1), valid_perplexities,
                  label='Validation Perplexity', marker='o', color='r')
         plt.xlabel('Epochs')
         plt.ylabel('Perplexity')
@@ -212,6 +212,9 @@ class RNNLLM:
         self.test_inputs, self.test_targets = self.create_sequences(
             self.test_indices, self.HP.seq_length)
 
+        print(f"Number of training sequences: {len(self.train_inputs)}")  # LOG: Added
+        print(f"Sequence length: {self.HP.seq_length}")  # LOG: Added
+
         print(f'Creating TensorDataset and DataLoader objects')
         # Create the TensorDataset objects
         self.train_dataset = TensorDataset(
@@ -228,16 +231,27 @@ class RNNLLM:
         self.test_loader = DataLoader(
             self.test_dataset, self.HP.batch_size, shuffle=False)
 
+        print(f"Number of batches in train_loader: {len(self.train_loader)}")  # LOG: Added
+        print(f"Batch size in train_loader: {self.HP.batch_size}")  # LOG: Added
+
     def init_hidden_layer(self, num_layers, batch_size, hidden_dim):
         return torch.zeros(num_layers, batch_size, hidden_dim).to(self.device)
 
+    # def create_sequences(self, data, seq_length):
+    #     inputs = []
+    #     targets = []
+    #     for i in range(len(data) - seq_length):
+    #         inputs.append(data[i:i + seq_length])  # input sequence
+    #         # target sequence, shifted by one
+    #         targets.append(data[i + 1:i + seq_length + 1])
+    #     return torch.tensor(inputs, dtype=torch.long), torch.tensor(targets, dtype=torch.long)
+    
     def create_sequences(self, data, seq_length):
         inputs = []
         targets = []
-        for i in range(len(data) - seq_length):
+        for i in range(0, len(data) - seq_length, seq_length):  # Slide by seq_length
             inputs.append(data[i:i + seq_length])  # input sequence
-            # target sequence, shifted by one
-            targets.append(data[i + 1:i + seq_length + 1])
+            targets.append(data[i + 1:i + seq_length + 1])  # target sequence, shifted by one
         return torch.tensor(inputs, dtype=torch.long), torch.tensor(targets, dtype=torch.long)
 
     def load_wikitext(self, file_path):
@@ -280,7 +294,7 @@ if __name__ == '__main__':
         hidden_dim=256,
         num_layers=1,
         embedding_dim=100,
-        dropout=0
+        dropout=0.5
     )
     multi_layer_rnn = HyperParams(
         vocab_size=10000,
